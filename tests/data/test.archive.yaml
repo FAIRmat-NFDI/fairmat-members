@@ -3,7 +3,6 @@ data:
   first_name: Jane
   last_name: Doe
   email: jane.doe@example.com
-  area: Area A - Synthesis
   orcid: 0009-0002-0896-320X
   member_type: PI
   expertise:

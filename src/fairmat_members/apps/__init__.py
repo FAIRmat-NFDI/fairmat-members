@@ -34,6 +34,8 @@ Q_TASK = f'data.fairmat_roles.task#{SCHEMA}'
 Q_PROJECT_NAME = f'data.external_projects.project_name#{SCHEMA}'
 Q_PROJECT_TYPE = f'data.external_projects.project_type#{SCHEMA}'
 Q_MAILING_LIST = f'data.mailing_list_terms.value#{SCHEMA}'
+Q_INVITED_TO = f'data.event_invitation.invited_to#{SCHEMA}'
+Q_REIMBURSEMENT = f'data.event_invitation.reimbursement#{SCHEMA}'
 
 # Column display paths for the repeating `fairmat_roles` subsection.  A plain
 # `subsection.field` path renders empty in the results table for a *repeating*
@@ -91,6 +93,8 @@ fairmat_members_app = App(
             Q_PROJECT_NAME,
             Q_PROJECT_TYPE,
             Q_MAILING_LIST,
+            Q_INVITED_TO,
+            Q_REIMBURSEMENT,
         ]
     ),
     columns=[
@@ -232,6 +236,23 @@ fairmat_members_app = App(
                     ),
                 ],
             ),
+            Menu(
+                title='Event invitation',
+                items=[
+                    MenuItemTerms(
+                        search_quantity=Q_INVITED_TO,
+                        title='Invited to',
+                        show_input=False,
+                        options=5,
+                    ),
+                    MenuItemTerms(
+                        search_quantity=Q_REIMBURSEMENT,
+                        title='Reimbursement',
+                        show_input=False,
+                        options=5,
+                    ),
+                ],
+            ),
         ],
     ),
     dashboard=Dashboard(
@@ -294,6 +315,30 @@ fairmat_members_app = App(
                     'lg': Layout(h=6, w=6, x=6, y=6),
                     'md': Layout(h=6, w=6, x=0, y=12),
                     'sm': Layout(h=6, w=12, x=0, y=24),
+                },
+            ),
+            WidgetTerms(
+                title='Members by event invitation',
+                type='terms',
+                search_quantity=Q_INVITED_TO,
+                scale='linear',
+                show_input=False,
+                layout={
+                    'lg': Layout(h=6, w=6, x=0, y=12),
+                    'md': Layout(h=6, w=6, x=6, y=12),
+                    'sm': Layout(h=6, w=12, x=0, y=30),
+                },
+            ),
+            WidgetTerms(
+                title='Members by reimbursement',
+                type='terms',
+                search_quantity=Q_REIMBURSEMENT,
+                scale='linear',
+                show_input=False,
+                layout={
+                    'lg': Layout(h=6, w=6, x=6, y=12),
+                    'md': Layout(h=6, w=6, x=0, y=18),
+                    'sm': Layout(h=6, w=12, x=0, y=36),
                 },
             ),
         ]

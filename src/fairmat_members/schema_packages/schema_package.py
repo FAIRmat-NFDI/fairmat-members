@@ -153,7 +153,6 @@ INVITED_TO = MEnum(
     'Project Meeting',
     'Users Meeting',
     'Both',
-    'Upon request of Area coordinator',
 )
 
 REIMBURSEMENT = MEnum(
@@ -483,16 +482,6 @@ class Person(Schema):
         a_eln=ELNAnnotation(component=ELNComponentEnum.StringEditQuantity),
     )
 
-    area = Quantity(
-        type=MEnum(FAIRMAT_AREAS),
-        label='Area',
-        description=(
-            'Primary FAIRmat area of this member. Independent of the '
-            'per-role areas listed under "FAIRmat roles".'
-        ),
-        a_eln=ELNAnnotation(component=ELNComponentEnum.EnumEditQuantity),
-    )
-
     email = Quantity(
         type=str,
         label='Email',
@@ -503,6 +492,7 @@ class Person(Schema):
     orcid = Quantity(
         type=str,
         label='ORCID',
+        default=ORCID_BASE,
         description=(
             'ORCID identifier of the member. Enter the full URL '
             '(https://orcid.org/0000-0000-0000-0000) or just the bare id; '
@@ -770,143 +760,151 @@ class Person(Schema):
         # normalised above (roles, mirrors, entry name, ...).
         self.summary = self._build_summary(display_name)
 
-    def _build_summary(self, display_name: str) -> str:  # noqa: PLR0912, PLR0915
-        """Assemble the read-only rich-text (HTML) overview summary.
+    # -- Read-only overview summary -------------------------------------------
+    # The summary is a nested, bulleted HTML block built from small per-section
+    # helpers so no single method grows too complex.  Sections are ordered by
+    # administrative relevance: contact, roles/areas (leadership first), event
+    # logistics, mailing lists, affiliations, projects, then expertise/onboarding.
 
-        Produces a nested, bulleted overview of the member: an identity header,
-        top-level facts (email, ORCID, expertise), and grouped sections for
-        affiliations, FAIRmat roles, mailing lists, external projects and event
-        invitation — using nested ``<ul>`` lists so related detail is indented
-        under its heading rather than shown as one flat line.
-        """
+    _LEADERSHIP_ROLES = {'Area Leader', 'Deputy Area Leader', 'Task Leader'}
 
-        def esc(value) -> str:
-            return (
-                str(value)
-                .replace('&', '&amp;')
-                .replace('<', '&lt;')
-                .replace('>', '&gt;')
-            )
+    @staticmethod
+    def _esc(value) -> str:
+        return str(value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
-        def li(label: str, value: str) -> str:
-            return f'<li><b>{esc(label)}:</b> {esc(value)}</li>'
+    @classmethod
+    def _li(cls, label: str, value: str) -> str:
+        return f'<li><b>{cls._esc(label)}:</b> {cls._esc(value)}</li>'
 
-        def group(label: str, items: list[str]) -> str:
-            """A heading <li> with a nested <ul> of pre-built <li> items."""
-            inner = ''.join(items)
-            return f'<li><b>{esc(label)}</b><ul>{inner}</ul></li>'
+    @classmethod
+    def _group(cls, label: str, items: list[str]) -> str:
+        """A heading <li> with a nested <ul> of pre-built <li> items."""
+        return f'<li><b>{cls._esc(label)}</b><ul>{"".join(items)}</ul></li>'
 
-        # -- Identity header ---------------------------------------------------
-        name = display_name or '(no name)'
-        header = f'<b>{esc(name)}</b>'
+    def _distinct_areas(self) -> list[str]:
+        return _unique_clean(r.area for r in (self.fairmat_roles or []))
+
+    def _build_summary(self, display_name: str) -> str:
+        """Assemble the read-only rich-text (HTML) overview summary."""
+        header = self._summary_header(display_name)
+        items: list[str] = []
+        for section in (
+            self._summary_contact(),
+            self._summary_roles(),
+            self._summary_mailing_lists(),
+            self._summary_affiliations(),
+            self._summary_projects(),
+            self._summary_extra(),
+        ):
+            items.extend(section)
+        return f'{header}<ul>{"".join(items)}</ul>'
+
+    def _summary_header(self, display_name: str) -> str:
+        header = f'<b>{self._esc(display_name or "(no name)")}</b>'
         if self.member_type:
-            header += f' — {esc(self.member_type)}'
-
-        # Header stat line: distinct areas + role/leadership counts.
-        distinct_areas = _unique_clean(r.area for r in (self.fairmat_roles or []))
-        n_roles = len(self.fairmat_roles or [])
-        leadership = {'Area Leader', 'Deputy Area Leader', 'Task Leader'}
-        n_lead = sum(1 for r in (self.fairmat_roles or []) if r.role in leadership)
+            header += f' — {self._esc(self.member_type)}'
+        roles = self.fairmat_roles or []
+        n_lead = sum(1 for r in roles if r.role in self._LEADERSHIP_ROLES)
         stat_bits = []
-        if distinct_areas:
-            stat_bits.append(f'{len(distinct_areas)} area(s)')
-        if n_roles:
-            stat_bits.append(f'{n_roles} role(s)')
+        if self._distinct_areas():
+            stat_bits.append(f'{len(self._distinct_areas())} area(s)')
+        if roles:
+            stat_bits.append(f'{len(roles)} role(s)')
         if n_lead:
             stat_bits.append(f'{n_lead} leadership role(s)')
         if stat_bits:
-            header += f'<br><i>{esc(" · ".join(stat_bits))}</i>'
+            header += f'<br><i>{self._esc(" · ".join(stat_bits))}</i>'
+        return header
 
-        # Sections are ordered by administrative relevance: contact first, then
-        # organisational role/area, then event logistics (invitation +
-        # reimbursement) and distribution (mailing lists), then the supporting
-        # detail (affiliations, projects, expertise, onboarding).
-        items: list[str] = []
+    def _summary_contact(self) -> list[str]:
+        # Email is intentionally omitted from the summary.  ORCID is shown only
+        # when it holds a real id, not the bare 'https://orcid.org/' default.
+        items = []
+        if self.orcid and self.orcid.rstrip('/') != ORCID_BASE.rstrip('/'):
+            items.append(self._li('ORCID', self.orcid))
+        return items
 
-        # -- 1. Contact & identifiers -----------------------------------------
-        if self.email:
-            items.append(li('Email', self.email))
-        if self.orcid:
-            items.append(li('ORCID', self.orcid))
+    # Roles that read naturally with "of" (leadership/ownership); everything
+    # else ('Participant', 'Member', ...) reads with "in".
+    _ROLE_PREPOSITION = {
+        'Area Leader': 'of',
+        'Deputy Area Leader': 'of',
+        'Task Leader': 'of',
+    }
 
-        # -- 2. FAIRmat roles & areas (leadership highlighted first) ----------
-        if distinct_areas:
-            items.append(li('Area(s)', ', '.join(distinct_areas)))
+    @classmethod
+    def _role_phrase(cls, role: str | None, task: str | None) -> str | None:
+        """Grammatically phrase one role, e.g. 'Task Leader of Task F1 – …',
+        'Participant in Task C2 – …', or just 'Area Leader' when task-less."""
+        if not role:
+            return None
+        if not task:
+            return cls._esc(role)
+        preposition = cls._ROLE_PREPOSITION.get(role, 'in')
+        return f'{cls._esc(role)} {preposition} {cls._esc(task)}'
 
-        if self.fairmat_roles:
-            lead_items, other_items = [], []
-            for r in self.fairmat_roles:
-                detail = ' — '.join(esc(bit) for bit in (r.role, r.area, r.task) if bit)
-                if not detail:
-                    continue
-                (lead_items if r.role in leadership else other_items).append(
-                    f'<li>{detail}</li>'
-                )
-            if lead_items:
-                items.append(group('Leadership roles', lead_items))
-            if other_items:
-                items.append(group('Other roles', other_items))
+    def _summary_roles(self) -> list[str]:
+        """Group the member's roles by area, nesting each role under its area:
 
-        # -- 3. Event logistics (invitation + reimbursement) ------------------
-        if self.event_invitation:
-            ei = self.event_invitation
-            ei_items = []
-            if ei.invited_to:
-                ei_items.append(li('Invited to', ei.invited_to))
-            if ei.reimbursement:
-                ei_items.append(li('Reimbursement', ei.reimbursement))
-            if getattr(ei, 'notes', None):
-                ei_items.append(li('Notes', ei.notes))
-            if ei_items:
-                items.append(group('Event invitation', ei_items))
+            Area C - Computation
+                - Participant in Task C2 – …
+                - Participant in Task C3 – …
+        """
+        # Preserve first-seen area order; roles with no area go under a
+        # catch-all bucket so nothing is silently dropped.
+        by_area: dict[str, list[str]] = {}
+        for r in self.fairmat_roles or []:
+            phrase = self._role_phrase(r.role, r.task)
+            if not phrase:
+                continue
+            key = r.area or ''
+            by_area.setdefault(key, []).append(f'<li>{phrase}</li>')
+        if not by_area:
+            return []
+        area_groups = []
+        for area, role_items in by_area.items():
+            label = area if area else 'No area assigned'
+            area_groups.append(self._group(label, role_items))
+        return [self._group('Areas and roles', area_groups)]
 
-        # -- 4. Mailing lists (distribution) ----------------------------------
-        if self.mailing_lists:
-            ml_items = [f'<li>{esc(m)}</li>' for m in _unique_clean(self.mailing_lists)]
-            if ml_items:
-                items.append(group('Mailing lists', ml_items))
+    def _summary_mailing_lists(self) -> list[str]:
+        ml_items = [
+            f'<li>{self._esc(m)}</li>' for m in _unique_clean(self.mailing_lists)
+        ]
+        return [self._group('Mailing lists', ml_items)] if ml_items else []
 
-        # -- 5. Affiliations (all, nested) ------------------------------------
-        if self.affiliations:
-            aff_items = []
-            for aff in self.affiliations:
-                line_bits = [
-                    bit
-                    for bit in (
-                        aff.institution_name,
-                        aff.department,
-                        aff.city,
-                        aff.country,
-                    )
-                    if bit
-                ]
-                if not line_bits:
-                    continue
-                entry = esc(', '.join(line_bits))
-                if aff.ror_id:
-                    entry += f' ({esc(aff.ror_id)})'
-                aff_items.append(f'<li>{entry}</li>')
-            if aff_items:
-                items.append(group('Affiliations', aff_items))
+    def _summary_affiliations(self) -> list[str]:
+        aff_items = []
+        for aff in self.affiliations or []:
+            line_bits = [
+                bit
+                for bit in (aff.institution_name, aff.department, aff.city, aff.country)
+                if bit
+            ]
+            if not line_bits:
+                continue
+            # ROR id is intentionally omitted from the summary.
+            aff_items.append(f'<li>{self._esc(", ".join(line_bits))}</li>')
+        return [self._group('Affiliations', aff_items)] if aff_items else []
 
-        # -- 6. External projects ---------------------------------------------
-        if self.external_projects:
-            proj_items = []
-            for proj in self.external_projects:
-                bits = [b for b in (proj.project_name, proj.project_type) if b]
-                if bits:
-                    proj_items.append(f'<li>{esc(" — ".join(bits))}</li>')
-            if proj_items:
-                items.append(group('External projects', proj_items))
+    def _summary_projects(self) -> list[str]:
+        proj_items = []
+        for proj in self.external_projects or []:
+            bits = [b for b in (proj.project_name, proj.project_type) if b]
+            if bits:
+                proj_items.append(f'<li>{self._esc(" — ".join(bits))}</li>')
+        return [self._group('External projects', proj_items)] if proj_items else []
 
-        # -- 7. Expertise & onboarding ----------------------------------------
+    def _summary_extra(self) -> list[str]:
+        items = []
         if self.expertise:
-            items.append(li('Expertise', ', '.join(_unique_clean(self.expertise))))
+            items.append(
+                self._li('Expertise', ', '.join(_unique_clean(self.expertise)))
+            )
         n_onboarding = len(self.onboarding_entries or [])
         if n_onboarding:
-            items.append(li('Onboarding questionnaires', str(n_onboarding)))
-
-        return f'{header}<ul>{"".join(items)}</ul>'
+            items.append(self._li('Onboarding questionnaires', str(n_onboarding)))
+        return items
 
 
 m_package.__init_metainfo__()

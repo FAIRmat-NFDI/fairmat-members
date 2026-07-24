@@ -11,7 +11,6 @@ def test_schema_package():
     data = entry_archive.data
     assert data.first_name == 'Jane'
     assert data.last_name == 'Doe'
-    assert data.area == 'Area A - Synthesis'
     assert data.member_type == 'PI'
     assert data.affiliations[0].institution_name == 'HU Berlin'
     assert data.fairmat_roles[1].role == 'Area Leader'
@@ -45,14 +44,24 @@ def test_schema_package():
     # member information, as a nested bulleted (<ul>/<li>) structure
     assert data.summary
     assert '<b>Jane Doe</b>' in data.summary
-    assert 'jane.doe@example.com' in data.summary
-    assert 'Area A - Synthesis' in data.summary
-    assert 'Area Leader' in data.summary
+    # Email is intentionally NOT included in the summary
+    assert 'jane.doe@example.com' not in data.summary
     # nested list structure and grouped sections
     assert '<ul>' in data.summary and '<li>' in data.summary
-    # the test entry has an Area Leader role -> a Leadership roles group
-    assert '<b>Leadership roles</b>' in data.summary
+    # roles are grouped by area, nested under an 'Areas and roles' section,
+    # with each area heading and grammatically phrased roles beneath it
+    assert '<b>Areas and roles</b>' in data.summary
+    assert '<b>Area A - Synthesis</b>' in data.summary
+    assert '<b>Area C - Computation</b>' in data.summary
+    # grammatically phrased, task-bound roles: 'of' for leaders, 'in' for others
+    assert 'Area Leader of Task A1 – Synthesis Methods' in data.summary
+    assert 'Participant in Task C1 – Ground-state and Electronic Structure' in data.summary
     assert '<b>Affiliations</b>' in data.summary
     assert '<b>Mailing lists</b>' in data.summary
+    # Event invitation is intentionally NOT included in the summary
+    assert 'Event invitation' not in data.summary
+    # ROR id is omitted from the summary, but the affiliation itself is kept
+    assert 'HU Berlin' in data.summary
+    assert 'ror.org' not in data.summary
     # header stat line
     assert 'role(s)' in data.summary

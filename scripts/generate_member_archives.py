@@ -34,8 +34,8 @@ Mapping notes (agreed with the data owner)
       ``role='Member', area=<that area>`` assignment is added.
 * Task codes ('A1', 'G3', ...) map to the full task enum values
   ('Task A1 - Synthesis Methods', ...) derived from the schema's ``TASKS``.
-* Invitation cells: 'Yes' -> invited; 'Upon request of Area coordinator' ->
-  the enum value of the same name; 'No'/blank -> not invited.
+* Invitation cells: 'Yes' -> invited; 'upon request' -> invited_to left empty
+  with a note on the Event invitation; 'No'/blank -> not invited.
 """
 
 from __future__ import annotations
@@ -160,7 +160,9 @@ REIMB_MAP = {
     'no': 'No',
 }
 
-INVITED_UPON_REQUEST = 'Upon request of Area coordinator'
+# 'Upon request of Area coordinator' is no longer an invited_to enum value; the
+# nuance is captured as a note appended to the Event invitation notes instead.
+INVITED_UPON_REQUEST_NOTE = 'Invited upon request of Area coordinator.'
 
 
 # ---------------------------------------------------------------------------
@@ -218,24 +220,25 @@ def invited_state(raw: str) -> str:
     return 'no'
 
 
-def parse_invited_to(meet_raw: str, retreat_raw: str) -> str | None:
-    """Combine the two invitation cells into a single invited_to enum value.
+def parse_invited_to(meet_raw: str, retreat_raw: str) -> tuple[str | None, bool]:
+    """Combine the two invitation cells into an invited_to enum value.
 
-    'Yes' on both  -> 'Both'; on one -> that meeting.  If neither is a plain
-    'Yes' but at least one is 'upon request', use the single 'Upon request of
-    Area coordinator' value.  Otherwise None.
+    Returns (invited_to, upon_request).  'Yes' on both -> 'Both'; on one -> that
+    meeting.  If neither is a plain 'Yes' but at least one is 'upon request',
+    invited_to stays None and upon_request is True (the caller records the
+    nuance as a note).  Otherwise (None, False).
     """
     meet = invited_state(meet_raw)
     retreat = invited_state(retreat_raw)
     if meet == 'yes' and retreat == 'yes':
-        return 'Both'
+        return 'Both', False
     if meet == 'yes':
-        return 'Project Meeting'
+        return 'Project Meeting', False
     if retreat == 'yes':
-        return 'Users Meeting'
+        return 'Users Meeting', False
     if 'upon_request' in (meet, retreat):
-        return INVITED_UPON_REQUEST
-    return None
+        return None, True
+    return None, False
 
 
 # ---------------------------------------------------------------------------
@@ -243,87 +246,78 @@ def parse_invited_to(meet_raw: str, retreat_raw: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def build_roles(get, who: str, warnings: list[str]) -> list[FAIRmatRoleAssignment]:  # noqa: PLR0912
-    """Build the fairmat_roles list.
+class _RoleBuilder:
+    """Accumulates the fairmat_roles for one member from the CSV role columns.
 
-    Three sources feed the roles:
-      1. Specific FAIRmat 2 roles (Area Leader / Deputy Area Leader / Task
-         Leader / Participant) each keep their own area.
-      2. The 'Member' column holds FAIRmat 1 area letters (coworkers /
-         collaborators / alumni); each is remapped F1 -> F2 and added as a
-         role='Member' entry.
-      3. The union of every FAIRmat 2 area letter seen across the four role
-         columns is completed with role='Member' entries for any area not
-         already covered by (1) or (2).
+    `covered_areas` are areas already tied to a concrete role; `union_areas`
+    are every area letter seen at all.  After the specific roles and the Member
+    column are added, any union area not yet covered becomes a `Member` entry.
     """
-    roles: list[FAIRmatRoleAssignment] = []
-    covered_areas: set[str] = set()
-    union_areas: set[str] = set()
 
-    def add_area_to_union(area: str | None) -> None:
+    def __init__(self, who: str, warnings: list[str]) -> None:
+        self.who = who
+        self.warnings = warnings
+        self.roles: list[FAIRmatRoleAssignment] = []
+        self.covered_areas: set[str] = set()
+        self.union_areas: set[str] = set()
+
+    def _add(self, role: str, area: str | None, task: str | None = None) -> None:
+        self.roles.append(FAIRmatRoleAssignment(role=role, area=area, task=task))
         if area:
-            union_areas.add(area)
+            self.covered_areas.add(area)
+            self.union_areas.add(area)
 
-    # -- Area Leader (bare area letter) --
-    if get(COL_AREA_LEADER):
-        area = area_of_token(get(COL_AREA_LEADER))
-        if area:
-            roles.append(FAIRmatRoleAssignment(role='Area Leader', area=area))
-            covered_areas.add(area)
-        add_area_to_union(area)
+    def add_leader(self, role: str, raw: str) -> None:
+        """Area Leader / Deputy Area Leader — a bare area letter (or task code)."""
+        if raw:
+            self._add(role, area_of_token(raw))
 
-    # -- Deputy Area Leader (bare area letter, sometimes a task code like C1) --
-    if get(COL_DEPUTY_AL):
-        area = area_of_token(get(COL_DEPUTY_AL))
-        if area:
-            roles.append(FAIRmatRoleAssignment(role='Deputy Area Leader', area=area))
-            covered_areas.add(area)
-        add_area_to_union(area)
+    def add_tasks(self, role: str, codes: list[str]) -> None:
+        """Task Leader / Participant — one or more task codes."""
+        for code in codes:
+            task = task_of_code(code)
+            if task is None:
+                self.warnings.append(f'{self.who}: unmapped {role} task code {code!r}')
+            self._add(role, area_of_token(code), task)
 
-    # -- Task Leader (task code) --
-    if get(COL_TASK_LEADER):
-        code = get(COL_TASK_LEADER)
-        task = task_of_code(code)
-        area = area_of_token(code)
-        if task is None:
-            warnings.append(f'{who}: unmapped task leader code {code!r}')
-        roles.append(FAIRmatRoleAssignment(role='Task Leader', task=task, area=area))
-        if area:
-            covered_areas.add(area)
-        add_area_to_union(area)
+    def add_members_from_f1(self, tokens: list[str]) -> None:
+        """CSV 'Member' column: FAIRmat 1 area letters remapped to FAIRmat 2."""
+        for token in tokens:
+            area, known = f2_area_of_f1_member(token)
+            if not known:
+                self.warnings.append(
+                    f'{self.who}: unmapped FAIRmat 1 Member area {token!r}'
+                )
+            elif area is None:
+                # A recognised F1 letter that deliberately maps to no F2 area.
+                self.warnings.append(
+                    f'{self.who}: FAIRmat 1 Member area {token!r} has no FAIRmat 2 target'
+                )
+            elif area not in self.covered_areas:
+                self._add('Member', area)
 
-    # -- Participant (one or more task codes) --
-    for code in split_multi(get(COL_PARTICIPANT)):
-        task = task_of_code(code)
-        area = area_of_token(code)
-        if task is None:
-            warnings.append(f'{who}: unmapped participant task code {code!r}')
-        roles.append(FAIRmatRoleAssignment(role='Participant', task=task, area=area))
-        if area:
-            covered_areas.add(area)
-        add_area_to_union(area)
+    def finish(self) -> list[FAIRmatRoleAssignment]:
+        """Complete the union with Member entries for any uncovered area."""
+        for area in sorted(self.union_areas - self.covered_areas):
+            self.roles.append(FAIRmatRoleAssignment(role='Member', area=area))
+        return self.roles
 
-    # -- Member column (FAIRmat 1 area letters) -> role='Member', F2 area --
-    for token in split_multi(get(COL_MEMBER)):
-        area, known = f2_area_of_f1_member(token)
-        if not known:
-            warnings.append(f'{who}: unmapped FAIRmat 1 Member area {token!r}')
-            continue
-        if area is None:
-            # A recognised F1 letter that deliberately maps to no F2 area.
-            warnings.append(
-                f'{who}: FAIRmat 1 Member area {token!r} has no FAIRmat 2 target'
-            )
-            continue
-        if area not in covered_areas:
-            roles.append(FAIRmatRoleAssignment(role='Member', area=area))
-            covered_areas.add(area)
 
-    # -- Any FAIRmat 2 area in the union not tied to a specific role -> Member --
-    for area in sorted(union_areas - covered_areas):
-        roles.append(FAIRmatRoleAssignment(role='Member', area=area))
+def build_roles(get, who: str, warnings: list[str]) -> list[FAIRmatRoleAssignment]:
+    """Build the fairmat_roles list from the CSV role columns.
 
-    return roles
+    Specific FAIRmat 2 roles (Area Leader / Deputy Area Leader / Task Leader /
+    Participant) keep their own area; the CSV 'Member' column holds FAIRmat 1
+    area letters that are remapped F1 -> F2 as role='Member'; and any area seen
+    but not tied to a specific role is added as a role='Member' entry.
+    """
+    builder = _RoleBuilder(who, warnings)
+    builder.add_leader('Area Leader', get(COL_AREA_LEADER))
+    builder.add_leader('Deputy Area Leader', get(COL_DEPUTY_AL))
+    builder.add_tasks('Task Leader', split_multi(get(COL_TASK_LEADER)))
+    builder.add_tasks('Participant', split_multi(get(COL_PARTICIPANT)))
+    builder.add_members_from_f1(split_multi(get(COL_MEMBER)))
+    return builder.finish()
 
 
 def build_person(row: dict, warnings: list[str]) -> tuple[Person, str]:
@@ -371,13 +365,18 @@ def build_person(row: dict, warnings: list[str]) -> tuple[Person, str]:
             warnings.append(f'{who}: unmapped Main Mail {main_mail_raw!r}')
 
     event_invitation = None
-    invited = parse_invited_to(get(COL_INVITE_MEETING), get(COL_INVITE_RETREAT))
+    invited, upon_request = parse_invited_to(
+        get(COL_INVITE_MEETING), get(COL_INVITE_RETREAT)
+    )
     reimb_raw = get(COL_REIMBURSEMENT)
     reimb = REIMB_MAP.get(reimb_raw.lower()) if reimb_raw else None
     if reimb_raw and reimb is None:
         warnings.append(f'{who}: unmapped reimbursement {reimb_raw!r}')
-    if invited or reimb:
-        event_invitation = EventInvitation(invited_to=invited, reimbursement=reimb)
+    event_notes = INVITED_UPON_REQUEST_NOTE if upon_request else None
+    if invited or reimb or event_notes:
+        event_invitation = EventInvitation(
+            invited_to=invited, reimbursement=reimb, notes=event_notes
+        )
 
     external_projects = [
         ExternalProject(project_name=name)
