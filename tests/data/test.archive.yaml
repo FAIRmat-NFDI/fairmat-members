@@ -3,6 +3,7 @@ data:
   first_name: Jane
   last_name: Doe
   email: jane.doe@example.com
+  orcid: 0009-0002-0896-320X
   member_type: PI
   expertise:
     - NeXus
@@ -13,6 +14,14 @@ data:
     - institution_name: HU Berlin
       city: Berlin
       country: Germany
+      ror_id: 01hcx6992
   fairmat_roles:
+    - role: Participant
+      area: Area B - Experiment
+      task: Task B1 – Hyperspectral Imaging
     - role: Area Leader
-      area: Area A
+      area: Area A - Synthesis
+      task: Task A1 – Synthesis Methods
+    - role: Participant
+      area: Area C - Computation
+      task: Task C1 – Ground-state and Electronic Structure
