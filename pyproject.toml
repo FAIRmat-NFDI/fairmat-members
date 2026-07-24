@@ -16,7 +16,7 @@ name = "fairmat-members"
 description = "A NOMAD schema and app for managing a FAIRmat member directory, including principal investigators, staff members, collaborators, affiliations, expertise, and project roles."
 version = "0.1.0"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 authors = [
     { name = "Ahmed Mansour", email = "amansour@physik.hu-berlin.de" },
 ]
@@ -53,9 +53,12 @@ dev = [
 [tool.uv]
 # pymatgen-core 2026.7.24 shipped cp311-only wheels (no cp312), which breaks
 # `uv sync` on our Python 3.12 CI.  It reaches us transitively via
-# nomad-lab -> pymatgen; constrain the resolution below that release.
+# nomad-lab -> pymatgen; constrain the resolution below that release.  The
+# marker keeps requires-python at >=3.10 so this plugin does not raise the
+# Python floor of any distribution that bundles it (pymatgen-core is 3.11+ only
+# anyway, so the constraint is a no-op on 3.10).
 constraint-dependencies = [
-  "pymatgen-core<2026.7.24",
+  "pymatgen-core<2026.7.24 ; python_version >= '3.11'",
 ]
 extra-index-url = [
   "https://gitlab.mpcdf.mpg.de/api/v4/projects/2187/packages/pypi/simple",
