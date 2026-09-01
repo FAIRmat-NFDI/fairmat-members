@@ -2,7 +2,7 @@ site_name: fairmat-members
 site_description: A NOMAD schema and app for managing a FAIRmat member directory, including principal investigators, staff members, collaborators, affiliations, expertise, and project roles.
 site_author: Ahmed Mansour
 
-repo_url: https://github.com/ahm531/fairmat-members
+repo_url: https://github.com/FAIRmat-NFDI/fairmat-members
 edit_uri: ""
 
 nav:
