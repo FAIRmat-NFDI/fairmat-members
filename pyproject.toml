@@ -32,7 +32,7 @@ dependencies = [
     # the deployment (fairmat-internal-oasis pyproject.toml) — differing URLs
     # for the same package make the plugin-test install fail with a
     # conflicting-URL error.  Bump both together.
-    "fairmat-onboarding @ git+https://github.com/FAIRmat-NFDI/fairmat_onboarding.git@d6539e437b71b7f38b2edf78c4c961bdeaf3637a",
+    "fairmat-onboarding @ git+https://github.com/FAIRmat-NFDI/fairmat_onboarding.git@29e0118e0f5b4ed88b1d33e9b003510c50f2c915",
 ]
 
 [project.urls]
