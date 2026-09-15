@@ -260,17 +260,32 @@ class FairmatRoleTerm(ArchiveSection):
 
 
 class FairmatAreaTerm(ArchiveSection):
-    """Deduplicated mirror of a single distinct area (as a compact letter).
+    """Deduplicated mirror of a single distinct area (full value).
 
     A member's areas live per-role inside `fairmat_roles`; the top-level `area`
     field is intentionally unused.  `Person.normalize` collects the distinct
-    area letters across all roles (e.g. 'B', or 'A', 'C', 'G') into this
-    repeating subsection so the app's 'Area' column can show them.  'E1' marks
-    the legacy 'FAIRmat1 Area E - Use Cases' entry.
+    areas across all roles into this repeating subsection.  The value is the
+    full 'Area X - Name' string, identical to the one used by
+    fairmat-events-form and fairmat-onboarding, so all three plugins share one
+    search facet.  The app's compact 'Area' column reads
+    `FairmatAreaLetterTerm` below instead.
     """
 
     m_def = Section(a_eln={'hide': ['value']})
-    value = Quantity(type=str)
+    value = Quantity(type=MEnum(FAIRMAT_AREAS), label_quantity='value')
+
+
+class FairmatAreaLetterTerm(ArchiveSection):
+    """Compact-letter mirror of the same areas, for the app's 'Area' column.
+
+    'Area B - Experiment' -> 'B'; 'E1' marks the legacy
+    'FAIRmat1 Area E - Use Cases' entry, kept distinct from the FAIRmat 2 'E'
+    and sorted last.  Display only: filtering and dashboards use the full
+    values in `FairmatAreaTerm`.
+    """
+
+    m_def = Section(a_eln={'hide': ['value']})
+    value = Quantity(type=str, label_quantity='value')
 
 
 class Affiliation(ArchiveSection):
@@ -462,6 +477,7 @@ class Person(Schema):
                 'mailing_list_terms',
                 'fairmat_role_terms',
                 'fairmat_area_terms',
+                'fairmat_area_letter_terms',
             ],
         },
     )
@@ -584,10 +600,15 @@ class Person(Schema):
     # (e.g. a single 'Participant') instead of one entry per task.
     fairmat_role_terms = SubSection(section_def=FairmatRoleTerm, repeats=True)
 
-    # Hidden, deduplicated mirror of the distinct area letters held across
-    # `fairmat_roles`, so the app's 'Area' column can show them (the top-level
-    # `area` field is intentionally unused).
+    # Hidden, deduplicated mirror of the distinct areas held across
+    # `fairmat_roles` (the top-level `area` field is intentionally unused).
+    # Full 'Area X - Name' values, shared as one facet with the other plugins.
     fairmat_area_terms = SubSection(section_def=FairmatAreaTerm, repeats=True)
+
+    # Hidden, deduplicated compact letters for the app's 'Area' column.
+    fairmat_area_letter_terms = SubSection(
+        section_def=FairmatAreaLetterTerm, repeats=True
+    )
 
     event_invitation = SubSection(
         section_def=EventInvitation,
@@ -719,16 +740,24 @@ class Person(Schema):
             FairmatRoleTerm(value=role) for role in distinct_roles
         ]
 
-        # Collect the distinct area letters held across all roles so the app's
-        # 'Area' column can show them (top-level `area` is intentionally unused).
-        # Sorted alphabetically, with the legacy 'E1' (Use Cases) letter last.
+        # Collect the distinct areas held across all roles (top-level `area` is
+        # intentionally unused).  The full values feed the shared search facet;
+        # the letters feed the app's compact 'Area' column.  Both are sorted
+        # alphabetically with the legacy Use Cases entry ('E1') last.
+        distinct_areas = _unique_clean(
+            role_assignment.area for role_assignment in (self.fairmat_roles or [])
+        )
+        distinct_areas.sort(key=lambda area: (area.startswith('FAIRmat1'), area))
+        self.fairmat_area_terms = [
+            FairmatAreaTerm(value=area) for area in distinct_areas
+        ]
+
         distinct_area_letters = _unique_clean(
-            _area_letter(role_assignment.area)
-            for role_assignment in (self.fairmat_roles or [])
+            _area_letter(area) for area in distinct_areas
         )
         distinct_area_letters.sort(key=lambda letter: (letter == 'E1', letter))
-        self.fairmat_area_terms = [
-            FairmatAreaTerm(value=letter) for letter in distinct_area_letters
+        self.fairmat_area_letter_terms = [
+            FairmatAreaLetterTerm(value=letter) for letter in distinct_area_letters
         ]
 
         # Soft-check the Participant/Member role convention against member_type.

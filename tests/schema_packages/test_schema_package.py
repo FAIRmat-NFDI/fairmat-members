@@ -40,6 +40,16 @@ def test_schema_package():
         'Participant',
     ]
 
+    # normalize() mirrors the distinct areas twice: the full 'Area X - Name'
+    # values feed the search facet shared with fairmat-events-form and
+    # fairmat-onboarding, the compact letters feed the app's 'Area' column
+    assert [t.value for t in data.fairmat_area_terms] == [
+        'Area A - Synthesis',
+        'Area B - Experiment',
+        'Area C - Computation',
+    ]
+    assert [t.value for t in data.fairmat_area_letter_terms] == ['A', 'B', 'C']
+
     # normalize() builds a read-only rich-text overview summary with the key
     # member information, as a nested bulleted (<ul>/<li>) structure
     assert data.summary
@@ -65,3 +75,32 @@ def test_schema_package():
     assert 'ror.org' not in data.summary
     # header stat line
     assert 'role(s)' in data.summary
+
+
+def test_legacy_use_cases_area():
+    """The FAIRmat 1 'Use Cases' area keeps its own letter and sorts last."""
+    import logging
+
+    from nomad.datamodel import EntryArchive
+
+    from fairmat_members.schema_packages.schema_package import (
+        FAIRmatRoleAssignment,
+        Person,
+    )
+
+    person = Person(first_name='Jane', last_name='Doe')
+    person.fairmat_roles = [
+        FAIRmatRoleAssignment(role='Participant', area='FAIRmat1 Area E - Use Cases'),
+        FAIRmatRoleAssignment(
+            role='Participant', area='Area E - Digital infrastructure'
+        ),
+        FAIRmatRoleAssignment(role='Participant', area='Area B - Experiment'),
+    ]
+    person.normalize(EntryArchive(data=person), logging.getLogger(__name__))
+
+    assert [t.value for t in person.fairmat_area_terms] == [
+        'Area B - Experiment',
+        'Area E - Digital infrastructure',
+        'FAIRmat1 Area E - Use Cases',
+    ]
+    assert [t.value for t in person.fairmat_area_letter_terms] == ['B', 'E', 'E1']

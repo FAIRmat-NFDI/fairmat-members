@@ -19,9 +19,11 @@ SCHEMA = 'fairmat_members.schema_packages.schema_package.Person'
 # ---------------------------------------------------------------------------
 Q_LAST_NAME = f'data.last_name#{SCHEMA}'
 Q_FIRST_NAME = f'data.first_name#{SCHEMA}'
-# Distinct area letters a member holds across their roles (the top-level
-# `data.area` field is intentionally unused, so filtering/aggregating on it
-# would be empty).  Populated by Person.normalize into fairmat_area_terms.
+# Distinct areas a member holds across their roles (the top-level `data.area`
+# field is intentionally unused, so filtering/aggregating on it would be
+# empty).  Populated by Person.normalize into fairmat_area_terms as the full
+# 'Area X - Name' value, shared as one facet with fairmat-events-form and
+# fairmat-onboarding.
 Q_PERSON_AREA = f'data.fairmat_area_terms.value#{SCHEMA}'
 Q_MEMBER_TYPE = f'data.member_type#{SCHEMA}'
 Q_EXPERTISE = f'data.expertise_terms.value#{SCHEMA}'
@@ -51,8 +53,9 @@ C_ROLE = f'data.fairmat_role_terms[0:10].value#{SCHEMA}'
 C_ROLE_AREA = f'data.fairmat_roles[0:10].area#{SCHEMA}'
 C_TASK = f'data.fairmat_roles[0:10].task#{SCHEMA}'
 
-# The 'Area' column shows the distinct area letters from fairmat_area_terms.
-C_PERSON_AREA = f'data.fairmat_area_terms[0:10].value#{SCHEMA}'
+# The 'Area' column shows the compact letters from fairmat_area_letter_terms,
+# so it stays short; filtering and dashboards use the full values above.
+C_PERSON_AREA = f'data.fairmat_area_letter_terms[0:10].value#{SCHEMA}'
 
 # ---------------------------------------------------------------------------
 # App definition
