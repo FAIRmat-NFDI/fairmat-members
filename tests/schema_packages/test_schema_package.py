@@ -65,3 +65,31 @@ def test_schema_package():
     assert 'ror.org' not in data.summary
     # header stat line
     assert 'role(s)' in data.summary
+
+
+def test_mailing_lists():
+    # The lists as renamed on the list server in November 2026:
+    # the fairmat2- prefix was dropped and team-b / team-g were added.
+    from fairmat_members.schema_packages.schema_package import MAILING_LISTS
+
+    assert len(MAILING_LISTS) == len(set(MAILING_LISTS))
+    assert all(a.endswith('@listen.physik.hu-berlin.de') for a in MAILING_LISTS)
+    assert sorted(a.split('@')[0] for a in MAILING_LISTS) == sorted(
+        [
+            'fairmat-area-leaders',
+            'fairmat-coordinators',
+            'fairmat-hq',
+            'fairmat-team',
+            'fairmat-coworkers',
+            'fairmat-pi',
+            'fairmat-area-a',
+            'fairmat-area-b',
+            'fairmat-area-c',
+            'fairmat-area-d',
+            'fairmat-area-e',
+            'fairmat-area-f',
+            'fairmat-area-g',
+            'fairmat-team-b',
+            'fairmat-team-g',
+        ]
+    )
