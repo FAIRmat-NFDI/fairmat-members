@@ -146,7 +146,7 @@ for _task in TASKS:
         _TASK_BY_CODE[_m.group(1)] = _task
 
 MAIN_MAIL_MAP = {
-    'pi': 'fairmat2-pi@listen.physik.hu-berlin.de',
+    'pi': 'fairmat-pi@listen.physik.hu-berlin.de',
     'coworker': 'fairmat-coworkers@listen.physik.hu-berlin.de',
     'coordinator': 'fairmat-coordinators@listen.physik.hu-berlin.de',
     'team': 'fairmat-team@listen.physik.hu-berlin.de',
